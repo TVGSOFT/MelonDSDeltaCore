@@ -234,7 +234,7 @@
 		BF062AB82543708E0010FF6D /* Config.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Config.cpp; path = melonDS/src/frontend/qt_sdl/Config.cpp; sourceTree = SOURCE_ROOT; };
 		BF062AB92543708E0010FF6D /* Config.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Config.h; path = melonDS/src/frontend/qt_sdl/Config.h; sourceTree = SOURCE_ROOT; };
 		BF38C9EE2494133F005AFA8D /* Standard.deltamapping */ = {isa = PBXFileReference; lastKnownFileType = file.bplist; path = Standard.deltamapping; sourceTree = "<group>"; };
-		BF39AFDE2534D2B500800781 /* Standard.deltaskin */ = {isa = PBXFileReference; lastKnownFileType = file; name = Standard.deltaskin; path = "Controller Skin/Standard.deltaskin"; sourceTree = "<group>"; };
+		BF39AFDE2534D2B500800781 /* Standard.deltaskin */ = {isa = PBXFileReference; lastKnownFileType = text; name = Standard.deltaskin; path = "Controller Skin/Standard.deltaskin"; sourceTree = "<group>"; };
 		BF7317852356624000774F10 /* MelonDSDeltaCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MelonDSDeltaCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF7317882356624000774F10 /* MelonDSDeltaCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MelonDSDeltaCore.h; sourceTree = "<group>"; };
 		BF7317892356624000774F10 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -1246,7 +1246,7 @@
 			buildSettings = {
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = "${TEAM_ID}";
 				DYLIB_COMPATIBILITY_VERSION = 1;
@@ -1265,6 +1265,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.rileytestut.MelonDSDeltaCore;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SUPPORTS_MACCATALYST = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -1285,7 +1286,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = J5V37Q262H;
+				DEVELOPMENT_TEAM = XX7LWV4T2P;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
