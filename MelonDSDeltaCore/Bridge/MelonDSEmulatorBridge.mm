@@ -134,6 +134,38 @@ void ParseTextCode(char* text, int tlen, u32* code, int clen) // or whatever thi
 
 @end
 
+/// Mirrors the reads NDS::SetupDirectBoot() makes from the cart: the ARM9 and ARM7 binaries (and the
+/// 0x800-byte ARM9 secure area) must lie inside the ROM buffer, which NDSCart::LoadROM() pads to a power of two.
+static BOOL MelonDSROMHeaderIsValid(NSData *romData)
+{
+    if (romData.length < 0x200 || romData.length > UINT32_MAX)
+    {
+        return NO;
+    }
+    
+    uint64_t cartROMSize = 0x200;
+    while (cartROMSize < romData.length)
+    {
+        cartROMSize <<= 1;
+    }
+    
+    const uint8_t *header = (const uint8_t *)romData.bytes;
+    auto readU32 = [header](size_t offset) -> uint64_t {
+        return (uint64_t)header[offset] | (uint64_t)header[offset + 1] << 8 | (uint64_t)header[offset + 2] << 16 | (uint64_t)header[offset + 3] << 24;
+    };
+    
+    uint64_t arm9Offset = readU32(0x20);
+    uint64_t arm9Size = readU32(0x2C);
+    uint64_t arm7Offset = readU32(0x30);
+    uint64_t arm7Size = readU32(0x3C);
+    
+    // Loops copy 4 bytes at a time, so round sizes up to a word.
+    uint64_t arm9End = arm9Offset + MAX((arm9Size + 3) & ~3ULL, 0x800ULL);
+    uint64_t arm7End = arm7Offset + ((arm7Size + 3) & ~3ULL);
+    
+    return arm9End <= cartROMSize && arm7End <= cartROMSize;
+}
+
 @implementation MelonDSEmulatorBridge
 @synthesize audioRenderer = _audioRenderer;
 @synthesize videoRenderer = _videoRenderer;
@@ -276,14 +308,21 @@ void ParseTextCode(char* text, int tlen, u32* code, int clen) // or whatever thi
         // Game exists and is not a directory.
         
         NSError *error = nil;
-        NSData *romData = [NSData dataWithContentsOfURL:gameURL options:0 error:&error];
+        // Mapped: LoadCart copies the ROM into its own buffer, so a 512 MB ROM would otherwise be resident twice.
+        NSData *romData = [NSData dataWithContentsOfURL:gameURL options:NSDataReadingMappedIfSafe error:&error];
         if (romData == nil)
         {
             NSLog(@"Failed to load Nintendo DS ROM. %@", error);
             return;
         }
         
-        if (NDS::LoadCart((const u8 *)romData.bytes, (u32)romData.length, NULL, 0))
+        if (!MelonDSROMHeaderIsValid(romData))
+        {
+            // NDSCart::LoadROM() doesn't validate the header, and NDS::SetupDirectBoot() then copies the ARM9/ARM7
+            // binaries from the header's offsets with no bounds check, reading past the ROM buffer (Crashlytics fc49dcec).
+            NSLog(@"Failed to load Nintendo DS ROM. Header points outside the ROM (%lu bytes).", (unsigned long)romData.length);
+        }
+        else if (NDS::LoadCart((const u8 *)romData.bytes, (u32)romData.length, NULL, 0))
         {
             NDS::SetupDirectBoot(gameURL.lastPathComponent.UTF8String);
         }
@@ -607,6 +646,14 @@ void ParseTextCode(char* text, int tlen, u32* code, int clen) // or whatever thi
 - (BOOL)addCheatCode:(NSString *)cheatCode type:(NSString *)type
 {
     NSArray<NSString *> *codes = [cheatCode componentsSeparatedByString:@"\n"];
+    
+    // ARCode::Code holds 2*64 words (64 lines); melonDS's own loader enforces the same limit.
+    // Longer codes made RunCheat read past the array (Crashlytics 5bb2fa3e).
+    if (codes.count == 0 || codes.count > 64)
+    {
+        return NO;
+    }
+    
     for (NSString *code in codes)
     {
         if (code.length != 17)
@@ -627,6 +674,7 @@ void ParseTextCode(char* text, int tlen, u32* code, int clen) // or whatever thi
     u32 codeLength = (u32)(sanitizedCode.length / 8);
     
     ARCode code;
+    memset(code.Code, 0, sizeof(code.Code));
     code.Name = sanitizedCode.UTF8String;
     ParseTextCode((char *)sanitizedCode.UTF8String, (int)[sanitizedCode lengthOfBytesUsingEncoding:NSUTF8StringEncoding], &code.Code[0], 128);
     code.Enabled = YES;
