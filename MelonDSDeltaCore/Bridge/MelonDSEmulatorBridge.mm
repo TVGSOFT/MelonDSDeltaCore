@@ -744,8 +744,15 @@ static BOOL MelonDSROMHeaderIsValid(NSData *romData)
         return;
     }
     
-    self.microphoneEnabled = YES;
-        
+    // Each engine gets its own converter and EQ node. The hardware input format changes with the
+    // audio route (built-in mic vs. AirPods/Bluetooth), and connecting the input node with a format
+    // cached from an earlier engine makes AVFAudio throw "Input HW format and tap format not
+    // matching" (Crashlytics 1046d474, b5ba94d1). A node also can't be attached to two engines.
+    _audioConverter = nil;
+    _audioEQEffect = [[AVAudioUnitEQ alloc] initWithNumberOfBands:2];
+    
+    AVAudioFormat *inputFormat = [self.audioEngine.inputNode inputFormatForBus:0];
+    
     // Experimentally-determined values. Focuses on ensuring blows are registered correctly.
     self.audioEQEffect.bands[0].filterType = AVAudioUnitEQFilterTypeLowShelf;
     self.audioEQEffect.bands[0].frequency = 100;
@@ -759,26 +766,45 @@ static BOOL MelonDSROMHeaderIsValid(NSData *romData)
     
     self.audioEQEffect.globalGain = 3;
     
-    [self.audioEngine attachNode:self.audioEQEffect];
-    [self.audioEngine connect:self.audioEngine.inputNode to:self.audioEQEffect format:self.audioConverter.inputFormat];
-    
-    unsigned int bufferSize = 1024 * self.audioConverter.inputFormat.streamDescription->mBytesPerFrame;
-    [self.audioEQEffect installTapOnBus:0 bufferSize:bufferSize format:self.audioConverter.inputFormat block:^(AVAudioPCMBuffer * _Nonnull buffer, AVAudioTime * _Nonnull when) {
-        dispatch_async(self.microphoneQueue, ^{
-            [self processMicrophoneBuffer:buffer];
-        });
-    }];
+    @try
+    {
+        [self.audioEngine attachNode:self.audioEQEffect];
+        [self.audioEngine connect:self.audioEngine.inputNode to:self.audioEQEffect format:inputFormat];
+        
+        unsigned int bufferSize = 1024 * inputFormat.streamDescription->mBytesPerFrame;
+        [self.audioEQEffect installTapOnBus:0 bufferSize:bufferSize format:inputFormat block:^(AVAudioPCMBuffer * _Nonnull buffer, AVAudioTime * _Nonnull when) {
+            dispatch_async(self.microphoneQueue, ^{
+                [self processMicrophoneBuffer:buffer];
+            });
+        }];
+        
+        self.microphoneEnabled = YES;
+    }
+    @catch (NSException *exception)
+    {
+        // The route can still change between reading the format and connecting. The game is
+        // playable without a microphone, so never let this take the app down.
+        NSLog(@"[MelonDSDeltaCore] Failed to prepare microphone: %@", exception);
+        self.microphoneEnabled = NO;
+    }
 }
 
 - (void)processMicrophoneBuffer:(AVAudioPCMBuffer *)inputBuffer
 {
-    static AVAudioPCMBuffer *outputBuffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:self.audioConverter.outputFormat frameCapacity:5000];
+    AVAudioConverter *audioConverter = self.audioConverter;
+    if (audioConverter == nil || ![inputBuffer.format isEqual:audioConverter.inputFormat])
+    {
+        // A buffer from a previous engine's tap, delivered after the route (and format) changed.
+        return;
+    }
+    
+    static AVAudioPCMBuffer *outputBuffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:audioConverter.outputFormat frameCapacity:5000];
     outputBuffer.frameLength = 5000;
     
     __block BOOL didReturnBuffer = NO;
     
     NSError *error = nil;
-    AVAudioConverterOutputStatus status = [self.audioConverter convertToBuffer:outputBuffer error:&error
+    AVAudioConverterOutputStatus status = [audioConverter convertToBuffer:outputBuffer error:&error
                                                             withInputFromBlock:^AVAudioBuffer * _Nullable(AVAudioPacketCount packetCount, AVAudioConverterInputStatus * _Nonnull outStatus) {
         if (didReturnBuffer)
         {
